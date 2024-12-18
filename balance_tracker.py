@@ -107,7 +107,7 @@ def get_account_balance() -> Optional[Dict]:
 def store_balance(balance_data: Dict) -> None:
     """Store balance data in Supabase with retry logic"""
     try:
-        supabase.table('account_balances').insert(balance_data).execute()
+        supabase.table('overview_snapshot').insert(balance_data).execute()
         logger.info("Stored balance data", extra={'balance_data': balance_data})
     except Exception as e:
         logger.error(f"Error storing balance in Supabase: {str(e)}", exc_info=True)
