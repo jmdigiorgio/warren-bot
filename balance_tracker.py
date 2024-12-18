@@ -89,12 +89,9 @@ def get_account_balance() -> Optional[Dict]:
     try:
         account = trading_client.get_account()
         return {
-            'cash': float(account.cash),
-            'portfolio_value': float(account.portfolio_value),
-            'buying_power': float(account.buying_power),
-            'timestamp': datetime.utcnow().isoformat(),
-            'currency': account.currency,
-            'account_number': account.account_number
+            'cash': str(float(account.cash)),  # Convert to string for JSON
+            'portfolio_value': str(float(account.portfolio_value)),  # Convert to string for JSON
+            'created_at': datetime.utcnow().isoformat()
         }
     except Exception as e:
         logger.error(f"Error fetching Alpaca balance: {str(e)}", exc_info=True)
