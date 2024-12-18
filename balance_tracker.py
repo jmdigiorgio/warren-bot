@@ -57,8 +57,9 @@ def validate_alpaca_access():
         if not account.status == AccountStatus.ACTIVE:
             raise ValueError(f"Account status is {account.status}, expected ACTIVE")
         
-        # Verify it's a paper account
-        if not account.account_number.startswith('PAS'):
+        # Verify it's a paper account (account number starts with PA)
+        if not account.account_number.startswith('PA'):
+            logger.error(f"Account number format: {account.account_number}")
             raise ValueError("Not a paper trading account! Please use paper trading credentials")
         
         logger.info("Successfully validated Alpaca paper trading access", 
