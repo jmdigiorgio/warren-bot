@@ -110,9 +110,27 @@ def store_balance(balance_data: Dict) -> None:
         logger.error(f"Error storing balance in Supabase: {str(e)}", exc_info=True)
         raise
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10)
+)
+def is_market_open() -> bool:
+    """Check if the market is currently open using Alpaca's clock API"""
+    try:
+        clock = trading_client.get_clock()
+        return clock.is_open
+    except Exception as e:
+        logger.error(f"Error checking market status: {str(e)}", exc_info=True)
+        raise
+
 def check_and_store_balance() -> None:
     """Main function to check balance and store it"""
     try:
+        # Only proceed if market is open
+        if not is_market_open():
+            logger.info("Market is closed, skipping balance check")
+            return
+            
         balance = get_account_balance()
         if balance:
             store_balance(balance)
