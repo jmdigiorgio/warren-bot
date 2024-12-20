@@ -1,24 +1,15 @@
 import os
-import logging
-from pythonjsonlogger import jsonlogger
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from clock_fetcher import get_clock_data
+from logger_config import get_logger
 
 # Load environment variables (only in development)
 if os.path.exists('.env'):
     load_dotenv()
 
-# Configure logging
-logger = logging.getLogger()
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter(
-    fmt='%(asctime)s %(levelname)s %(name)s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
-logger.setLevel(logging.INFO)
+# Get module logger
+logger = get_logger('clock_publisher')
 
 # Initialize Supabase client
 try:
@@ -39,26 +30,26 @@ def publish_clock_data(force_open=False, test_mode=False):
         test_mode (bool): If True, run once and exit
     """
     try:
-        logger.info("Clock publisher: Checking market status...")
+        logger.info("Checking market status...")
         # Get clock data
         clock_data = get_clock_data(force_open=force_open)
         
         if clock_data['is_open']:
             # Publish to Supabase
             data = supabase.table('clock_snapshot').insert(clock_data).execute()
-            logger.info("Clock publisher: Successfully published clock data to database")
+            logger.info("Successfully published clock data to database")
             
             if test_mode:
-                logger.info("Clock publisher: Test mode - Exiting after one successful publish")
+                logger.info("Test mode - Exiting after one successful publish")
                 return clock_data
         else:
-            logger.info("Clock publisher: Market is closed, skipping clock data publish")
+            logger.info("Market is closed, skipping clock data publish")
             if test_mode:
-                logger.info("Clock publisher: Test mode - Exiting as market is closed")
+                logger.info("Test mode - Exiting as market is closed")
                 return None
                 
     except Exception as e:
-        logger.error(f"Clock publisher error: {str(e)}", exc_info=True)
+        logger.error(f"Error: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
