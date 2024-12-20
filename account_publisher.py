@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from account_fetcher import get_account_data
@@ -31,29 +32,33 @@ def publish_account_data(force_open=False, test_mode=False):
         test_mode (bool): If True, run once and exit
     """
     try:
-        logger.info("Checking market status...")
-        clock_data = get_clock_data(force_open=force_open)
-        
-        if clock_data['is_open']:
-            logger.info("Market is open, fetching account data")
-            account_data = get_account_data()
+        while True:
+            logger.info("Checking market status...")
+            clock_data = get_clock_data(force_open=force_open)
             
-            # Map Alpaca's id to alpaca_id
-            account_data['alpaca_id'] = account_data.pop('id')
-            
-            # Publish to Supabase
-            data = supabase.table('account_snapshot').insert(account_data).execute()
-            logger.info("Successfully published account data to database")
-            
-            if test_mode:
-                logger.info("Test mode - Exiting after one successful publish")
-                return account_data
-        else:
-            logger.info("Market is closed, skipping account data fetch")
-            if test_mode:
-                logger.info("Test mode - Exiting as market is closed")
-                return None
+            if clock_data['is_open']:
+                logger.info("Market is open, fetching account data")
+                account_data = get_account_data()
                 
+                # Map Alpaca's id to alpaca_id
+                account_data['alpaca_id'] = account_data.pop('id')
+                
+                # Publish to Supabase
+                data = supabase.table('account_snapshot').insert(account_data).execute()
+                logger.info("Successfully published account data to database")
+                
+                if test_mode:
+                    logger.info("Test mode - Exiting after one successful publish")
+                    return account_data
+            else:
+                logger.info("Market is closed, skipping account data fetch")
+                if test_mode:
+                    logger.info("Test mode - Exiting as market is closed")
+                    return None
+            
+            if not test_mode:
+                time.sleep(60)  # Sleep for 1 minute before next check
+                    
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
         raise
