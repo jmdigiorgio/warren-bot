@@ -1,2 +1,3 @@
-# warren-bot
-The backend/bot component of the automated trading system
+# Overview
+
+The bot component of the Warren Trading System. Runs independently of the frontend and database.

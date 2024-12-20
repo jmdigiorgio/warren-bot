@@ -1,1 +1,1 @@
-web: python balance_tracker.py 
+worker: python account_publisher.py && python clock_publisher.py 
