@@ -40,10 +40,11 @@ def publish_account_data(force_open=False, test_mode=False):
         test_mode (bool): If True, run once and exit
     """
     try:
+        logger.info("Account publisher: Checking market status...")
         clock_data = get_clock_data(force_open=force_open)
         
         if clock_data['is_open']:
-            logger.info("Market is open, fetching account data")
+            logger.info("Account publisher: Market is open, fetching account data")
             account_data = get_account_data()
             
             # Map Alpaca's id to alpaca_id
@@ -51,19 +52,19 @@ def publish_account_data(force_open=False, test_mode=False):
             
             # Publish to Supabase
             data = supabase.table('account_snapshot').insert(account_data).execute()
-            logger.info("Successfully published account data to Supabase")
+            logger.info("Account publisher: Successfully published account data to database")
             
             if test_mode:
-                logger.info("Test mode: Exiting after one successful publish")
+                logger.info("Account publisher: Test mode - Exiting after one successful publish")
                 return account_data
         else:
-            logger.info("Market is closed")
+            logger.info("Account publisher: Market is closed, skipping account data fetch")
             if test_mode:
-                logger.info("Test mode: Exiting as market is closed")
+                logger.info("Account publisher: Test mode - Exiting as market is closed")
                 return None
                 
     except Exception as e:
-        logger.error(f"Error in publish loop: {str(e)}", exc_info=True)
+        logger.error(f"Account publisher error: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
