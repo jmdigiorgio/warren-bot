@@ -45,10 +45,6 @@ def get_clock_data(force_open=False):
             'next_close': clock.next_close.isoformat() if clock.next_close else None,
             'timestamp': clock.timestamp.isoformat() if clock.timestamp else None
         }
-        
-        status = "open (forced)" if force_open and not clock.is_open else "open" if clock.is_open else "closed"
-        logger.info(f"Market is currently {status}", extra={'clock_data': clock_data})
-        
         return clock_data
     except Exception as e:
         logger.error(f"Error fetching clock data: {str(e)}", exc_info=True)

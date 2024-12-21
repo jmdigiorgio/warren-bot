@@ -63,7 +63,6 @@ def get_account_data():
             'regt_buying_power': account.regt_buying_power,
             'non_marginable_buying_power': account.non_marginable_buying_power
         }
-        logger.info("Account data from Alpaca:", extra={'account_data': account_data})
         return account_data
     except Exception as e:
         logger.error(f"Error fetching Alpaca account data: {str(e)}", exc_info=True)

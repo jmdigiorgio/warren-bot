@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from clock_fetcher import get_clock_data
@@ -22,6 +23,20 @@ except KeyError as e:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+def format_time_remaining(seconds):
+    """Format seconds into hours, minutes, seconds string"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    return f"{hours} hours, {minutes} minutes, and {seconds} seconds"
+
+def calculate_sleep_time(next_time_str):
+    """Calculate seconds until the next market event (open)"""
+    next_time = datetime.fromisoformat(next_time_str.replace('Z', '+00:00'))
+    now = datetime.now(next_time.tzinfo)
+    sleep_seconds = (next_time - now).total_seconds()
+    return max(0, sleep_seconds)  # Ensure we don't return negative sleep time
+
 def publish_clock_data(force_open=False, test_mode=False):
     """
     Fetch and publish clock data to Supabase
@@ -32,26 +47,39 @@ def publish_clock_data(force_open=False, test_mode=False):
     """
     try:
         while True:
-            logger.info("Checking market status...")
-            # Get clock data
+            # Get clock data and publish to database
             clock_data = get_clock_data(force_open=force_open)
+            data = supabase.table('clock_snapshot').insert(clock_data).execute()
             
             if clock_data['is_open']:
-                # Publish to Supabase
-                data = supabase.table('clock_snapshot').insert(clock_data).execute()
-                logger.info("Successfully published clock data to database")
+                # Calculate and log time until market close
+                time_to_close = calculate_sleep_time(clock_data['next_close'])
+                logger.info(f"Market will close in {format_time_remaining(time_to_close)}")
                 
                 if test_mode:
-                    logger.info("Test mode - Exiting after one successful publish")
+                    logger.info("Test mode - Exiting after successful publish")
                     return clock_data
+                    
+                # When market is open, check every minute for unexpected closures
+                time.sleep(60)
             else:
-                logger.info("Market is closed, skipping clock data publish")
+                # When market is closed, calculate sleep time until next open
+                total_sleep_time = calculate_sleep_time(clock_data['next_open'])
+                logger.info(f"Market is closed. Next open in {format_time_remaining(total_sleep_time)}")
+                
                 if test_mode:
                     logger.info("Test mode - Exiting as market is closed")
-                    return None
-            
-            if not test_mode:
-                time.sleep(60)  # Sleep for 1 minute before next check
+                    return clock_data
+                
+                # Sleep until just before market opens, logging countdown each minute
+                while total_sleep_time > 0:
+                    if total_sleep_time > 60:
+                        time.sleep(60)
+                        total_sleep_time -= 60
+                        logger.info(f"Market opens in {format_time_remaining(total_sleep_time)}")
+                    else:
+                        time.sleep(total_sleep_time)
+                        break
                     
     except Exception as e:
         logger.error(f"Error: {str(e)}", exc_info=True)
