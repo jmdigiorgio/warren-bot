@@ -46,7 +46,6 @@ def get_account_data():
             'trading_blocked': account.trading_blocked,
             'transfers_blocked': account.transfers_blocked,
             'account_blocked': account.account_blocked,
-            'created_at': account.created_at.isoformat() if account.created_at else None,
             'trade_suspended_by_user': account.trade_suspended_by_user,
             'multiplier': account.multiplier,
             'shorting_enabled': account.shorting_enabled,

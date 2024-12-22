@@ -67,8 +67,14 @@ def publish_account_data(force_open=False, test_mode=False):
                 account_data['alpaca_id'] = account_data.pop('id')
                 
                 logger.info("Publishing account data to Supabase")
-                data = supabase_writer.table('account_snapshot').insert(account_data).execute()
-                logger.info("Account data updated")
+                try:
+                    data = supabase_writer.table('account_snapshot').insert(account_data).execute()
+                    logger.info("Account data inserted successfully", extra={'inserted_data': data.data})
+                except Exception as e:
+                    logger.error(f"Failed to insert account data: {str(e)}", 
+                               extra={'account_data': account_data}, 
+                               exc_info=True)
+                    raise
                 
                 if test_mode:
                     logger.info("Test mode - Exiting after one successful publish")
