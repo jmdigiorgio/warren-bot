@@ -48,7 +48,10 @@ def publish_clock_data(force_open=False, test_mode=False):
     try:
         while True:
             # Get clock data and publish to database
+            logger.info("Fetching clock data from Alpaca API")
             clock_data = get_clock_data(force_open=force_open)
+            
+            logger.info("Publishing clock data to Supabase")
             data = supabase.table('clock_snapshot').insert(clock_data).execute()
             
             if clock_data['is_open']:

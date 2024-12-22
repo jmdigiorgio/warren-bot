@@ -31,6 +31,7 @@ def get_market_status():
     """Get the current market status from the clock_snapshot table"""
     try:
         # Get the latest clock snapshot using anon key
+        logger.info("Fetching market status from Supabase")
         response = supabase_reader.table('clock_snapshot').select('*').order('created_at', desc=True).limit(1).execute()
         if response.data:
             return response.data[0]
@@ -61,8 +62,11 @@ def publish_account_data(force_open=False, test_mode=False):
             
             if force_open or clock_data['is_open']:
                 # Fetch and publish account data
+                logger.info("Fetching account data from Alpaca API")
                 account_data = get_account_data()
                 account_data['alpaca_id'] = account_data.pop('id')
+                
+                logger.info("Publishing account data to Supabase")
                 data = supabase_writer.table('account_snapshot').insert(account_data).execute()
                 logger.info("Account data updated")
                 
