@@ -42,13 +42,26 @@ def get_market_status():
         logger.error(f"Error fetching market status from database: {str(e)}")
         return None
 
-def publish_account_data(force_open=False, test_mode=False):
+def cleanup_old_snapshots():
+    """Delete all but the most recent account snapshot when market is closed"""
+    try:
+        logger.info("Cleaning up old account snapshots")
+        # Get the latest snapshot ID
+        response = supabase_writer.table('account_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
+        if response.data:
+            latest_id = response.data[0]['id']
+            # Delete all snapshots except the latest
+            supabase_writer.table('account_snapshot').delete().neq('id', latest_id).execute()
+            logger.info("Successfully cleaned up old account snapshots")
+    except Exception as e:
+        logger.error(f"Error cleaning up old account snapshots: {str(e)}")
+
+def publish_account_data(force_open=False):
     """
     Fetch and publish account data to Supabase
     
     Args:
         force_open (bool): If True, treat market as open regardless of actual state
-        test_mode (bool): If True, run once and exit
     """
     try:
         while True:
@@ -56,8 +69,7 @@ def publish_account_data(force_open=False, test_mode=False):
             
             if not clock_data:
                 logger.error("Could not determine market status, waiting 60 seconds before retry")
-                if not test_mode:
-                    time.sleep(60)
+                time.sleep(60)
                 continue
             
             if force_open or clock_data['is_open']:
@@ -76,26 +88,24 @@ def publish_account_data(force_open=False, test_mode=False):
                                exc_info=True)
                     raise
                 
-                if test_mode:
-                    logger.info("Test mode - Exiting after one successful publish")
-                    return account_data
+                # When market is open, check every minute
+                time.sleep(60)
             else:
-                if test_mode:
-                    logger.info("Test mode - Exiting as market is closed")
-                    return None
-            
-            if not test_mode:
-                time.sleep(60)  # Sleep for 1 minute before next check
-                    
+                # Clean up old snapshots when market is closed
+                cleanup_old_snapshots()
+                
+                # When market is closed, sleep until next check
+                time.sleep(60)
+
     except Exception as e:
-        logger.error(f"Error: {str(e)}", exc_info=True)
+        logger.error(f"Error in publish_account_data: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description='Account data publisher')
-    parser.add_argument('--force-open', action='store_true', help='Force market to be treated as open')
-    parser.add_argument('--test', action='store_true', help='Run once and exit')
-    args = parser.parse_args()
+    import sys
+    force_open = '--force-open' in sys.argv
     
-    publish_account_data(force_open=args.force_open, test_mode=args.test) 
+    if force_open:
+        logger.info("Market will be treated as open")
+        
+    publish_account_data(force_open=force_open) 
