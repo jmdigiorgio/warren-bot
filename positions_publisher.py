@@ -83,19 +83,8 @@ def publish_positions_data(force_open=False):
                 
                 logger.info("[POSITIONS] Publishing positions data to Supabase")
                 try:
-                    # Get current timestamp for this batch
-                    now = datetime.utcnow().isoformat()
-                    
-                    # Add timestamp to each position
-                    for position in positions_data:
-                        position['batch_time'] = now
-                    
-                    # Insert new positions data first
+                    # Insert new positions data
                     data = supabase_writer.table('positions_snapshot').insert(positions_data).execute()
-                    
-                    # Then delete any positions from previous batches
-                    supabase_writer.table('positions_snapshot').delete().lt('batch_time', now).execute()
-                    
                     logger.info(f"[POSITIONS] Successfully inserted {len(positions_data)} positions", extra={'inserted_data': data.data})
                 except Exception as e:
                     logger.error(f"[POSITIONS] Failed to insert positions data: {str(e)}", 
