@@ -50,12 +50,12 @@ def cleanup_old_snapshots():
     """Delete all but the most recent positions snapshot when market is closed"""
     try:
         logger.info("[POSITIONS] Cleaning up old positions snapshots")
-        # Get the latest snapshot ID
-        response = supabase_writer.table('positions_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
+        # Get the latest timestamp
+        response = supabase_writer.table('positions_snapshot').select('created_at').order('created_at', desc=True).limit(1).execute()
         if response.data:
-            latest_id = response.data[0]['id']
-            # Delete all snapshots except the latest
-            supabase_writer.table('positions_snapshot').delete().neq('id', latest_id).execute()
+            latest_timestamp = response.data[0]['created_at']
+            # Delete all positions except those from the latest timestamp
+            supabase_writer.table('positions_snapshot').delete().lt('created_at', latest_timestamp).execute()
             logger.info("[POSITIONS] Successfully cleaned up old positions snapshots")
     except Exception as e:
         logger.error(f"[POSITIONS] Error cleaning up old positions snapshots: {str(e)}")
@@ -87,7 +87,7 @@ def publish_positions_data(force_open=False):
                     supabase_writer.table('positions_snapshot').delete().neq('id', 0).execute()
                     # Insert new positions data
                     data = supabase_writer.table('positions_snapshot').insert(positions_data).execute()
-                    logger.info("[POSITIONS] Positions data inserted successfully", extra={'inserted_data': data.data})
+                    logger.info(f"[POSITIONS] Successfully inserted {len(positions_data)} positions", extra={'inserted_data': data.data})
                 except Exception as e:
                     logger.error(f"[POSITIONS] Failed to insert positions data: {str(e)}", 
                                extra={'positions_data': positions_data}, 
