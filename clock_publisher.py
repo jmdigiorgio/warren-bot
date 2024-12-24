@@ -37,6 +37,20 @@ def calculate_sleep_time(next_time_str):
     sleep_seconds = (next_time - now).total_seconds()
     return max(0, sleep_seconds)  # Ensure we don't return negative sleep time
 
+def cleanup_old_snapshots():
+    """Delete all but the most recent clock snapshot when market is closed"""
+    try:
+        logger.info("Cleaning up old clock snapshots")
+        # Get the latest snapshot ID
+        response = supabase.table('clock_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
+        if response.data:
+            latest_id = response.data[0]['id']
+            # Delete all snapshots except the latest
+            supabase.table('clock_snapshot').delete().neq('id', latest_id).execute()
+            logger.info("Successfully cleaned up old clock snapshots")
+    except Exception as e:
+        logger.error(f"Error cleaning up old clock snapshots: {str(e)}")
+
 def publish_clock_data(force_open=False, test_mode=False):
     """
     Fetch and publish clock data to Supabase
@@ -66,6 +80,9 @@ def publish_clock_data(force_open=False, test_mode=False):
                 # When market is open, check every minute for unexpected closures
                 time.sleep(60)
             else:
+                # Clean up old snapshots when market is closed
+                cleanup_old_snapshots()
+                
                 # When market is closed, calculate sleep time until next open
                 total_sleep_time = calculate_sleep_time(clock_data['next_open'])
                 logger.info(f"Market is closed. Next open in {format_time_remaining(total_sleep_time)}")
