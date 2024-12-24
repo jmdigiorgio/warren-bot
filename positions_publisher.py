@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from positions_fetcher import get_positions_data
 from logger_config import get_logger
+import logging
 
 # Load environment variables (only in development)
 if os.path.exists('.env'):
@@ -13,13 +14,16 @@ if os.path.exists('.env'):
 # Get module logger
 logger = get_logger('positions_publisher')
 
+# Disable HTTP request logging
+logging.getLogger('httpx').setLevel(logging.WARNING)
+
 # Initialize Supabase clients
 try:
     SUPABASE_URL = os.environ['SUPABASE_URL']
     SUPABASE_SERVICE_ROLE_KEY = os.environ['SUPABASE_SERVICE_ROLE_KEY']
     SUPABASE_ANON_KEY = os.environ['NEXT_PUBLIC_SUPABASE_ANON_KEY']
 except KeyError as e:
-    logger.error(f"Missing required environment variable: {e}")
+    logger.error(f"[POSITIONS] Missing required environment variable: {e}")
     raise
 
 # Client for reading clock data (public access)
@@ -31,16 +35,30 @@ def get_market_status():
     """Get the current market status from the clock_snapshot table"""
     try:
         # Get the latest clock snapshot using anon key
-        logger.info("Fetching market status from Supabase")
+        logger.info("[POSITIONS] Fetching market status from Supabase")
         response = supabase_reader.table('clock_snapshot').select('*').order('created_at', desc=True).limit(1).execute()
         if response.data:
             return response.data[0]
         else:
-            logger.error("No clock data found in database")
+            logger.error("[POSITIONS] No clock data found in database")
             return None
     except Exception as e:
-        logger.error(f"Error fetching market status from database: {str(e)}")
+        logger.error(f"[POSITIONS] Error fetching market status from database: {str(e)}")
         return None
+
+def cleanup_old_snapshots():
+    """Delete all but the most recent positions snapshot when market is closed"""
+    try:
+        logger.info("[POSITIONS] Cleaning up old positions snapshots")
+        # Get the latest snapshot ID
+        response = supabase_writer.table('positions_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
+        if response.data:
+            latest_id = response.data[0]['id']
+            # Delete all snapshots except the latest
+            supabase_writer.table('positions_snapshot').delete().neq('id', latest_id).execute()
+            logger.info("[POSITIONS] Successfully cleaned up old positions snapshots")
+    except Exception as e:
+        logger.error(f"[POSITIONS] Error cleaning up old positions snapshots: {str(e)}")
 
 def publish_positions_data(force_open=False):
     """
@@ -54,29 +72,24 @@ def publish_positions_data(force_open=False):
             clock_data = get_market_status()
             
             if not clock_data:
-                logger.error("Could not determine market status, waiting 60 seconds before retry")
+                logger.error("[POSITIONS] Could not determine market status, waiting 60 seconds before retry")
                 time.sleep(60)
                 continue
             
             if force_open or clock_data['is_open']:
                 # Fetch and publish positions data
-                logger.info("Fetching positions data from Alpaca API")
+                logger.info("[POSITIONS] Fetching positions data from Alpaca API")
                 positions_data = get_positions_data()
                 
-                logger.info("Publishing positions data to Supabase")
+                logger.info("[POSITIONS] Publishing positions data to Supabase")
                 try:
-                    # Delete existing positions first
+                    # Delete existing positions before inserting new ones
                     supabase_writer.table('positions_snapshot').delete().neq('id', 0).execute()
-                    
-                    # Insert new positions if there are any
-                    if positions_data:
-                        data = supabase_writer.table('positions_snapshot').insert(positions_data).execute()
-                        logger.info("Positions data inserted successfully", extra={'inserted_data': data.data})
-                    else:
-                        logger.info("No positions data to insert")
-                        
+                    # Insert new positions data
+                    data = supabase_writer.table('positions_snapshot').insert(positions_data).execute()
+                    logger.info("[POSITIONS] Positions data inserted successfully", extra={'inserted_data': data.data})
                 except Exception as e:
-                    logger.error(f"Failed to insert positions data: {str(e)}", 
+                    logger.error(f"[POSITIONS] Failed to insert positions data: {str(e)}", 
                                extra={'positions_data': positions_data}, 
                                exc_info=True)
                     raise
@@ -84,11 +97,14 @@ def publish_positions_data(force_open=False):
                 # When market is open, check every minute
                 time.sleep(60)
             else:
+                # Clean up old snapshots when market is closed
+                cleanup_old_snapshots()
+                
                 # When market is closed, sleep until next check
                 time.sleep(60)
-                
+
     except Exception as e:
-        logger.error(f"Error in publish_positions_data: {str(e)}", exc_info=True)
+        logger.error(f"[POSITIONS] Error in publish_positions_data: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
@@ -96,6 +112,6 @@ if __name__ == "__main__":
     force_open = '--force-open' in sys.argv
     
     if force_open:
-        logger.info("Market will be treated as open")
+        logger.info("[POSITIONS] Market will be treated as open")
         
     publish_positions_data(force_open=force_open) 

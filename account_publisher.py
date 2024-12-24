@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from account_fetcher import get_account_data
 from logger_config import get_logger
+import logging
 
 # Load environment variables (only in development)
 if os.path.exists('.env'):
@@ -12,6 +13,9 @@ if os.path.exists('.env'):
 
 # Get module logger
 logger = get_logger('account_publisher')
+
+# Disable HTTP request logging
+logging.getLogger('httpx').setLevel(logging.WARNING)
 
 # Initialize Supabase clients
 try:
@@ -31,30 +35,30 @@ def get_market_status():
     """Get the current market status from the clock_snapshot table"""
     try:
         # Get the latest clock snapshot using anon key
-        logger.info("Fetching market status from Supabase")
+        logger.info("[ACCOUNT] Fetching market status from Supabase")
         response = supabase_reader.table('clock_snapshot').select('*').order('created_at', desc=True).limit(1).execute()
         if response.data:
             return response.data[0]
         else:
-            logger.error("No clock data found in database")
+            logger.error("[ACCOUNT] No clock data found in database")
             return None
     except Exception as e:
-        logger.error(f"Error fetching market status from database: {str(e)}")
+        logger.error(f"[ACCOUNT] Error fetching market status from database: {str(e)}")
         return None
 
 def cleanup_old_snapshots():
     """Delete all but the most recent account snapshot when market is closed"""
     try:
-        logger.info("Cleaning up old account snapshots")
+        logger.info("[ACCOUNT] Cleaning up old account snapshots")
         # Get the latest snapshot ID
         response = supabase_writer.table('account_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
         if response.data:
             latest_id = response.data[0]['id']
             # Delete all snapshots except the latest
             supabase_writer.table('account_snapshot').delete().neq('id', latest_id).execute()
-            logger.info("Successfully cleaned up old account snapshots")
+            logger.info("[ACCOUNT] Successfully cleaned up old account snapshots")
     except Exception as e:
-        logger.error(f"Error cleaning up old account snapshots: {str(e)}")
+        logger.error(f"[ACCOUNT] Error cleaning up old account snapshots: {str(e)}")
 
 def publish_account_data(force_open=False):
     """
@@ -68,22 +72,22 @@ def publish_account_data(force_open=False):
             clock_data = get_market_status()
             
             if not clock_data:
-                logger.error("Could not determine market status, waiting 60 seconds before retry")
+                logger.error("[ACCOUNT] Could not determine market status, waiting 60 seconds before retry")
                 time.sleep(60)
                 continue
             
             if force_open or clock_data['is_open']:
                 # Fetch and publish account data
-                logger.info("Fetching account data from Alpaca API")
+                logger.info("[ACCOUNT] Fetching account data from Alpaca API")
                 account_data = get_account_data()
                 account_data['alpaca_id'] = account_data.pop('id')
                 
-                logger.info("Publishing account data to Supabase")
+                logger.info("[ACCOUNT] Publishing account data to Supabase")
                 try:
                     data = supabase_writer.table('account_snapshot').insert(account_data).execute()
-                    logger.info("Account data inserted successfully", extra={'inserted_data': data.data})
+                    logger.info("[ACCOUNT] Account data inserted successfully", extra={'inserted_data': data.data})
                 except Exception as e:
-                    logger.error(f"Failed to insert account data: {str(e)}", 
+                    logger.error(f"[ACCOUNT] Failed to insert account data: {str(e)}", 
                                extra={'account_data': account_data}, 
                                exc_info=True)
                     raise
@@ -98,7 +102,7 @@ def publish_account_data(force_open=False):
                 time.sleep(60)
 
     except Exception as e:
-        logger.error(f"Error in publish_account_data: {str(e)}", exc_info=True)
+        logger.error(f"[ACCOUNT] Error in publish_account_data: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
@@ -106,6 +110,6 @@ if __name__ == "__main__":
     force_open = '--force-open' in sys.argv
     
     if force_open:
-        logger.info("Market will be treated as open")
+        logger.info("[ACCOUNT] Market will be treated as open")
         
     publish_account_data(force_open=force_open) 

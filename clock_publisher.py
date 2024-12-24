@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from clock_fetcher import get_clock_data
 from logger_config import get_logger
+import logging
 
 # Load environment variables (only in development)
 if os.path.exists('.env'):
@@ -13,12 +14,15 @@ if os.path.exists('.env'):
 # Get module logger
 logger = get_logger('clock_publisher')
 
+# Disable HTTP request logging
+logging.getLogger('httpx').setLevel(logging.WARNING)
+
 # Initialize Supabase client
 try:
     SUPABASE_URL = os.environ['SUPABASE_URL']
     SUPABASE_SERVICE_ROLE_KEY = os.environ['SUPABASE_SERVICE_ROLE_KEY']
 except KeyError as e:
-    logger.error(f"Missing required environment variable: {e}")
+    logger.error(f"[CLOCK] Missing required environment variable: {e}")
     raise
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -40,16 +44,16 @@ def calculate_sleep_time(next_time_str):
 def cleanup_old_snapshots():
     """Delete all but the most recent clock snapshot when market is closed"""
     try:
-        logger.info("Cleaning up old clock snapshots")
+        logger.info("[CLOCK] Cleaning up old clock snapshots")
         # Get the latest snapshot ID
         response = supabase.table('clock_snapshot').select('id').order('created_at', desc=True).limit(1).execute()
         if response.data:
             latest_id = response.data[0]['id']
             # Delete all snapshots except the latest
             supabase.table('clock_snapshot').delete().neq('id', latest_id).execute()
-            logger.info("Successfully cleaned up old clock snapshots")
+            logger.info("[CLOCK] Successfully cleaned up old clock snapshots")
     except Exception as e:
-        logger.error(f"Error cleaning up old clock snapshots: {str(e)}")
+        logger.error(f"[CLOCK] Error cleaning up old clock snapshots: {str(e)}")
 
 def publish_clock_data(force_open=False, test_mode=False):
     """
@@ -62,19 +66,19 @@ def publish_clock_data(force_open=False, test_mode=False):
     try:
         while True:
             # Get clock data and publish to database
-            logger.info("Fetching clock data from Alpaca API")
+            logger.info("[CLOCK] Fetching clock data from Alpaca API")
             clock_data = get_clock_data(force_open=force_open)
             
-            logger.info("Publishing clock data to Supabase")
+            logger.info("[CLOCK] Publishing clock data to Supabase")
             data = supabase.table('clock_snapshot').insert(clock_data).execute()
             
             if clock_data['is_open']:
                 # Calculate and log time until market close
                 time_to_close = calculate_sleep_time(clock_data['next_close'])
-                logger.info(f"Market will close in {format_time_remaining(time_to_close)}")
+                logger.info(f"[CLOCK] Market will close in {format_time_remaining(time_to_close)}")
                 
                 if test_mode:
-                    logger.info("Test mode - Exiting after successful publish")
+                    logger.info("[CLOCK] Test mode - Exiting after successful publish")
                     return clock_data
                     
                 # When market is open, check every minute for unexpected closures
@@ -85,10 +89,10 @@ def publish_clock_data(force_open=False, test_mode=False):
                 
                 # When market is closed, calculate sleep time until next open
                 total_sleep_time = calculate_sleep_time(clock_data['next_open'])
-                logger.info(f"Market is closed. Next open in {format_time_remaining(total_sleep_time)}")
+                logger.info(f"[CLOCK] Market is closed. Next open in {format_time_remaining(total_sleep_time)}")
                 
                 if test_mode:
-                    logger.info("Test mode - Exiting as market is closed")
+                    logger.info("[CLOCK] Test mode - Exiting as market is closed")
                     return clock_data
                 
                 # Sleep until just before market opens, logging countdown each minute
@@ -96,13 +100,13 @@ def publish_clock_data(force_open=False, test_mode=False):
                     if total_sleep_time > 60:
                         time.sleep(60)
                         total_sleep_time -= 60
-                        logger.info(f"Market opens in {format_time_remaining(total_sleep_time)}")
+                        logger.info(f"[CLOCK] Market opens in {format_time_remaining(total_sleep_time)}")
                     else:
                         time.sleep(total_sleep_time)
                         break
                     
     except Exception as e:
-        logger.error(f"Error: {str(e)}", exc_info=True)
+        logger.error(f"[CLOCK] Error: {str(e)}", exc_info=True)
         raise
 
 if __name__ == "__main__":
@@ -112,4 +116,7 @@ if __name__ == "__main__":
     parser.add_argument('--test', action='store_true', help='Run once and exit')
     args = parser.parse_args()
     
+    if args.force_open:
+        logger.info("[CLOCK] Market will be treated as open")
+        
     publish_clock_data(force_open=args.force_open, test_mode=args.test) 
