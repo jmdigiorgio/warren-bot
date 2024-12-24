@@ -1,1 +1,1 @@
-worker: python account_publisher.py & python clock_publisher.py 
+worker: python account_publisher.py & python clock_publisher.py & python positions_publisher.py 
