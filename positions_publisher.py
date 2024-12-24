@@ -54,7 +54,7 @@ def cleanup_old_snapshots():
         response = supabase_writer.table('positions_snapshot').select('created_at').order('created_at', desc=True).limit(1).execute()
         if response.data:
             latest_timestamp = response.data[0]['created_at']
-            # Delete all positions except those from the latest timestamp
+            # Delete all positions from earlier timestamps
             supabase_writer.table('positions_snapshot').delete().lt('created_at', latest_timestamp).execute()
             logger.info("[POSITIONS] Successfully cleaned up old positions snapshots")
     except Exception as e:
@@ -83,10 +83,19 @@ def publish_positions_data(force_open=False):
                 
                 logger.info("[POSITIONS] Publishing positions data to Supabase")
                 try:
-                    # Delete existing positions before inserting new ones
-                    supabase_writer.table('positions_snapshot').delete().neq('id', 0).execute()
-                    # Insert new positions data
+                    # Get current timestamp for this batch
+                    now = datetime.utcnow().isoformat()
+                    
+                    # Add timestamp to each position
+                    for position in positions_data:
+                        position['batch_time'] = now
+                    
+                    # Insert new positions data first
                     data = supabase_writer.table('positions_snapshot').insert(positions_data).execute()
+                    
+                    # Then delete any positions from previous batches
+                    supabase_writer.table('positions_snapshot').delete().lt('batch_time', now).execute()
+                    
                     logger.info(f"[POSITIONS] Successfully inserted {len(positions_data)} positions", extra={'inserted_data': data.data})
                 except Exception as e:
                     logger.error(f"[POSITIONS] Failed to insert positions data: {str(e)}", 
